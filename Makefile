@@ -1,13 +1,14 @@
-All:testrv
+BASEDIR = $(PWD)
+LIB_DIR = $(BASEDIR)/lib
+SRC_DIR = $(BASEDIR)/src
+TARGET_DIR = $(BASEDIR)/bin
+LIBS = -L$(BASEDIR)/lib/x64 -lmsc -ldl -lpthread -lrt -lm
+INCLUDES = -I$(BASEDIR)/lib/inc
+voiceprogram:main.o
+	gcc $^ -o $(TARGET_DIR)/voiceprogram $(LIBS) $(INCLUDES)
 
-testrv:recordvoice.o testrv.o
-	gcc recordvoice.o testrv.o -o testrv -lasound
-
-recordvoice.o:recordvoice.c recordvoice.h
-	gcc -c recordvoice.c recordvoice.h
-
-testrv.o:testrv.c
-	gcc -c testrv.c
+main.o:$(SRC_DIR)/main.c
+	gcc -c $^ $(INCLUDES) $(LIBS)
 
 clean:
-	rm -rf testrv.o recordvoice.o
+	rm -rf *.o 
