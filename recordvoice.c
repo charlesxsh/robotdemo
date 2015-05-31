@@ -128,4 +128,15 @@ int play_from_file(const char *filename){
 }
 
 
+void thrd_listen_start(pthread *t){
+	if (pthread_create(t, NULL, thrd_listen, NULL) != 0){
+		fprintf(stderr, "Error from create listen thread.");
+		exit(1);
+	}
+}
 
+void *thrd_listen(void *arg){
+	while (1){
+		//一直录音，每5秒发送一次，并清除之前的再录，再发，
+	}
+}
