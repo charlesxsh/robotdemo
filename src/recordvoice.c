@@ -128,15 +128,27 @@ int play_from_file(const char *filename){
 }
 
 
-void thrd_listen_start(pthread *t){
-	if (pthread_create(t, NULL, thrd_listen, NULL) != 0){
+void thrd_listen_start(pthread_t *t, char *filename, pthread_mutex_t *mutex){
+	if (pthread_create(t, NULL, thrd_listen, (void *)filename)) != 0){
 		fprintf(stderr, "Error from create listen thread.");
 		exit(1);
 	}
 }
 
 void *thrd_listen(void *arg){
-	while (1){
-		//一直录音，每5秒发送一次，并清除之前的再录，再发，
+	char *filename = (char *)arg;
+	while(1){
+		
+		printf("Listening and recording file-->%s\n",filename);
 	}
+}
+
+void thrd_result_start(pthread_t *t, char *filename, pthread_mutex_t *mutex){
+	if((pthread_create(t, NULL, thrd_result)) != 0){
+		fprintf(stderr, "Error from create listen thread.\n");
+		exit(1);
+	}
+}
+void *thrd_result(void *arg){
+
 }
