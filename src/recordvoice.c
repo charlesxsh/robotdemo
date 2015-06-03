@@ -127,28 +127,112 @@ int play_from_file(const char *filename){
 	return 0;
 }
 
-
-void thrd_listen_start(pthread_t *t, char *filename, pthread_mutex_t *mutex){
-	if (pthread_create(t, NULL, thrd_listen, (void *)filename)) != 0){
-		fprintf(stderr, "Error from create listen thread.");
-		exit(1);
+int text_to_voice(const char *text, const char *params, const char *filename){
+	/* Prepare Part */
+	const char *session_id = NULL;
+	int ret = -1;
+	unsigned int audio_len = 0;
+	int synth_status = MSP_TTS_FLAG_STILL_HAVE_DATA;
+	FILE *fp = NULL;
+	if(text == NULL || filename == NULL){
+		fprintf(stderr, "Function text_to_voice parameters are invalid.\n");
+		return -1;
 	}
-}
+	/* Prepare part end */
 
-void *thrd_listen(void *arg){
-	char *filename = (char *)arg;
+	/* Session Begin */
+	session_id = QTTSSessionBegin(params, &ret);
+	if(ret != MSP_SUCCESS){
+		fprintf(stderr, "QTTSSessionBegin failed. Error code %d.\n", ret);
+		return -1;
+	}
+	ret = QTTSTextPut(session_id, text, strlen(text), NULL);
+	if(ret != MSP_SUCCESS){
+		fprintf(stderr, "QTTSTextPut failed. Error code %d.\n", ret);
+		return -1;
+	}
+	fp = fopen(filename,"wb");
+	if(fp == NULL){
+		fprintf(stderr, "File %s created failed.\n", filename);
+		return -1;
+	}
 	while(1){
-		
-		printf("Listening and recording file-->%s\n",filename);
+		const void *data = QTTSAudioGet(session_id, &audio_len, &synth_status, &ret);
+		if(data != NULL) fwrite(data, audio_len, 1, fp);
+		if(synth_status == MSP_TTS_FLAG_DATA_END || ret != 0) break;
+		sleep(1);
 	}
+	fclose(fp);
+	ret = QTTSSessionEnd(session_id, NULL);
+	if(ret != MSP_SUCCESS){
+		fprintf(stderr, "QTTSSessionEnd failed. Error code %d.\n", ret);
+	}
+	return 0;
 }
 
-void thrd_result_start(pthread_t *t, char *filename, pthread_mutex_t *mutex){
-	if((pthread_create(t, NULL, thrd_result)) != 0){
-		fprintf(stderr, "Error from create listen thread.\n");
-		exit(1);
+char *voice_to_text(const char *params, const char *filename){
+	if(params == NULL || filename == NULL){
+		fprintf(stderr, "Function voice_to_text parameters are invalid.\n");
+		return NULL;
 	}
-}
-void *thrd_result(void *arg){
+	FILE *fp = fopen(filename, "rb");
+	if(fp == NULL){
+		fprintf(stderr, "File %s read failed.\n", filename);
+		return NULL;
+	}
+	int ret = -1;
+	char buff_audiodata[5120];
+	unsigned int audio_len = 0;
+	int audio_status = 2;
+	int ep_status = 0;
+	int rec_status = 0;
+	const char *session_id;
 
+	session_id = QISRSessionBegin(NULL, params, &ret);
+	if(ret != MSP_SUCCESS){
+		fprintf(stderr, "QISRSessionBegin failed. Error code %d\n", ret);
+		return NULL;
+	}
+
+	/* start to upload audio data */
+	while(audio_status != MSP_AUDIO_SAMPLE_LAST){
+		audio_len = fread(buff_audiodata, 1, 5120, fp);
+		if (audio_len != 5120) audio_status = MSP_AUDIO_SAMPLE_LAST;
+		ret = QISRAudioWrite(session_id, buff_audiodata, audio_len, audio_status, &ep_status, &rec_status);
+		if (ret != 0){
+			fprintf(stderr, "QISRAudioWrite failed. Error code %d.\n", ret);
+			break;
+		}else if (ep_status == MSP_EP_AFTER_SPEECH){
+			fprintf(stderr, "End point of speech has been detected.\n");
+			break;
+		}
+		usleep(160 * 1000); //160ms
+	}
+
+	const char *text_result;
+	int rslt_result = 0;
+
+	while(rslt_result != MSP_REC_STATUS_COMPLETE){
+		text_result = QISRGetResult(session_id, &rslt_result, 5000, &ret);
+		if(ret != 0){
+			fprintf(stderr, "QISRGetResult failed. Error code %d.\n", ret);
+			return NULL;
+		}
+		if(text_result != NULL){
+			break;
+		}
+		//太累了懒得写了
+		//Here need to fix the long text problem.
+		usleep(200 * 1000);
+	}
+	int l = strlen(text_result);
+	char *t = (char *)malloc(sizeof(char) * l + 1);
+	strncpy(t, text_result, l);
+	t[l] = '\0';
+	ret = QISRSessionEnd(session_id, "normal end");
+	if(ret != 0){
+		fprintf(stderr, "QISRSessionEnd failed. Error code is %d.\n", ret);
+	}
+	
+	return t;
 }
