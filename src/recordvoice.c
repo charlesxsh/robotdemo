@@ -1,8 +1,10 @@
 #include "recordvoice.h"
 
 
-int record_to_file(const char *filename){
-	long loops;
+int record_to_file(const char *filename, int sec){
+ 	struct timeval tv_begin;
+    struct timeval tv_end;
+    struct timezone tz;
 	int rc, size, dir;
 	int total_len = 0;
 	unsigned int val;
@@ -28,7 +30,7 @@ int record_to_file(const char *filename){
 	snd_pcm_hw_params_set_access(rec_handle, rec_params, SND_PCM_ACCESS_RW_INTERLEAVED);
 	snd_pcm_hw_params_set_format(rec_handle, rec_params, SND_PCM_FORMAT_S16_LE);
 	snd_pcm_hw_params_set_channels(rec_handle, rec_params, 1);
-	val = 8000; //44100 bits per second sampling rate is cd quality
+	val = 16000; //44100 bits per second sampling rate is cd quality
 	snd_pcm_hw_params_set_rate_near(rec_handle, rec_params, &val, &dir);
 	frames = 32;
 	snd_pcm_hw_params_set_period_size_near(rec_handle, rec_params, &frames, &dir);
@@ -41,9 +43,12 @@ int record_to_file(const char *filename){
 	snd_pcm_hw_params_get_period_size(rec_params, &frames, &dir);
 	size = frames * 2;
 	buffer = (char *)malloc(size);
+	printf("size is %d", size);
 	snd_pcm_hw_params_get_period_time(rec_params, &val, &dir);
-	loops = 2000;
-	while(loops-- > 0){
+	printf("frequency is %d", val);
+    gettimeofday(&tv_begin, &tz);
+	printf("Recording...\n");
+	while(1){
 		rc = snd_pcm_readi(rec_handle, buffer, frames);
 
 		if(rc == -EPIPE){
@@ -57,11 +62,16 @@ int record_to_file(const char *filename){
 
 		rc = fwrite(buffer,1,size, fp_rec);
 		total_len += size;
-		printf("Recording...Total: %d bytes.\n", total_len);
+		//printf("Recording...Total: %d bytes.\n", total_len);
 		if (rc != size){
 			fprintf(stderr, "short write: wrote %d bytes.\n", rc);
 		}
+		gettimeofday(&tv_end, &tz);
+        if(tv_end.tv_sec - tv_begin.tv_sec > sec){
+            break;
+        }
 	}
+	printf("Record end.\n");
 	snd_pcm_drain(rec_handle);
 	snd_pcm_close(rec_handle);
 	free(buffer);
@@ -78,7 +88,7 @@ int play_from_file(const char *filename){
 	snd_pcm_uframes_t frames;
 	char *buffer;
 	int channels = 1;
-	int frequency = 8000;
+	int frequency = 16000;
 	int bit = 16;
 	int datablock = 2;
 	FILE *fp = fopen(filename, "rb");
@@ -107,7 +117,7 @@ int play_from_file(const char *filename){
 		memset(buffer,0,sizeof(buffer));
 		ret = fread(buffer,1,size,fp);
 		if(ret == 0){
-			printf("Write over!");
+			printf("Playing now.....\n");
 			break;
 		}
 		while((ret = snd_pcm_writei(handle, buffer, frames))<0){
@@ -127,9 +137,8 @@ int play_from_file(const char *filename){
 	return 0;
 }
 
-int text_to_voice(const char *text, const char *params, const char *filename){
+int text_to_voice(const char *text, char *session_id, const char *filename){
 	/* Prepare Part */
-	const char *session_id = NULL;
 	int ret = -1;
 	unsigned int audio_len = 0;
 	int synth_status = MSP_TTS_FLAG_STILL_HAVE_DATA;
@@ -141,11 +150,12 @@ int text_to_voice(const char *text, const char *params, const char *filename){
 	/* Prepare part end */
 
 	/* Session Begin */
-	session_id = QTTSSessionBegin(params, &ret);
-	if(ret != MSP_SUCCESS){
-		fprintf(stderr, "QTTSSessionBegin failed. Error code %d.\n", ret);
-		return -1;
-	}
+	// session_id = QTTSSessionBegin(params, &ret);
+	// if(ret != MSP_SUCCESS){
+	// 	fprintf(stderr, "QTTSSessionBegin failed. Error code %d.\n", ret);
+	// 	return -1;
+	// }
+
 	ret = QTTSTextPut(session_id, text, strlen(text), NULL);
 	if(ret != MSP_SUCCESS){
 		fprintf(stderr, "QTTSTextPut failed. Error code %d.\n", ret);
@@ -163,18 +173,15 @@ int text_to_voice(const char *text, const char *params, const char *filename){
 		sleep(1);
 	}
 	fclose(fp);
-	ret = QTTSSessionEnd(session_id, NULL);
-	if(ret != MSP_SUCCESS){
-		fprintf(stderr, "QTTSSessionEnd failed. Error code %d.\n", ret);
-	}
+	// ret = QTTSSessionEnd(session_id, NULL);
+	// if(ret != MSP_SUCCESS){
+	// 	fprintf(stderr, "QTTSSessionEnd failed. Error code %d.\n", ret);
+	// }
 	return 0;
 }
 
-char *voice_to_text(const char *params, const char *filename){
-	if(params == NULL || filename == NULL){
-		fprintf(stderr, "Function voice_to_text parameters are invalid.\n");
-		return NULL;
-	}
+char *voice_to_text(char *session_id, const char *filename){
+
 	FILE *fp = fopen(filename, "rb");
 	if(fp == NULL){
 		fprintf(stderr, "File %s read failed.\n", filename);
@@ -186,13 +193,12 @@ char *voice_to_text(const char *params, const char *filename){
 	int audio_status = 2;
 	int ep_status = 0;
 	int rec_status = 0;
-	const char *session_id;
 
-	session_id = QISRSessionBegin(NULL, params, &ret);
-	if(ret != MSP_SUCCESS){
-		fprintf(stderr, "QISRSessionBegin failed. Error code %d\n", ret);
-		return NULL;
-	}
+	// session_id = QISRSessionBegin(NULL, params, &ret);
+	// if(ret != MSP_SUCCESS){
+	// 	fprintf(stderr, "QISRSessionBegin failed. Error code %d\n", ret);
+	// 	return NULL;
+	// }
 
 	/* start to upload audio data */
 	while(audio_status != MSP_AUDIO_SAMPLE_LAST){
@@ -204,11 +210,10 @@ char *voice_to_text(const char *params, const char *filename){
 			break;
 		}else if (ep_status == MSP_EP_AFTER_SPEECH){
 			fprintf(stderr, "End point of speech has been detected.\n");
-			break;
+			continue;
 		}
 		usleep(160 * 1000); //160ms
 	}
-
 	const char *text_result;
 	int rslt_result = 0;
 
@@ -219,20 +224,49 @@ char *voice_to_text(const char *params, const char *filename){
 			return NULL;
 		}
 		if(text_result != NULL){
+			//printf("%s\n", text_result);
 			break;
 		}
 		//太累了懒得写了
 		//Here need to fix the long text problem.
 		usleep(200 * 1000);
 	}
-	int l = strlen(text_result);
-	char *t = (char *)malloc(sizeof(char) * l + 1);
-	strncpy(t, text_result, l);
-	t[l] = '\0';
-	ret = QISRSessionEnd(session_id, "normal end");
-	if(ret != 0){
-		fprintf(stderr, "QISRSessionEnd failed. Error code is %d.\n", ret);
+
+	if(text_result == NULL){
+		return NULL;
 	}
+
+	unsigned int len = strlen(text_result);
+	char *final_result = (char *)malloc(len);
+	strncpy(final_result, text_result, len);
+	// ret = QISRSessionEnd(session_id, "normal end");
+	// if(ret != 0){
+	// 	fprintf(stderr, "QISRSessionEnd failed. Error code is %d.\n", ret);
+	// }
 	
-	return t;
+	return final_result;
+}
+
+void parseAndplay(char *str, char *tv_session_id){
+	if(str == NULL){
+		text_to_voice("你是哑巴吗", tv_session_id, "result");
+    	play_from_file("result");
+    	return;
+	}
+	int rc;
+	cJSON *answer;
+	cJSON *jsonstr = cJSON_Parse(str);
+	if ((rc = cJSON_GetObjectItem(jsonstr, "rc")->valueint) == 0){
+		if((answer = cJSON_GetObjectItem(jsonstr, "answer")) != NULL){
+			char *text = cJSON_GetObjectItem(answer, "text")->valuestring;
+			printf("%s\n", text);
+			text_to_voice(text, tv_session_id, "result");
+    		play_from_file("result");
+			return;
+		}
+	}else{
+			text_to_voice("你在说什么鬼", tv_session_id, "result");
+    		play_from_file("result");
+    		return;
+	}
 }
