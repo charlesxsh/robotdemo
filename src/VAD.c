@@ -226,9 +226,9 @@ void _vad_reset(void)
 	m_littleEnergy = 0;
 	m_thresholdCross  = 0.05;
 	m_enable = 1;
-	m_sensitive = 0.16; //0.04
+	m_sensitive = 0.09; //0.04
 
-    m_thresholdCross  = 0.05;
+    m_thresholdCross  = 0.06;
     m_upCount = 0;
     m_downCount = 0;
     m_hasVoice = 0;

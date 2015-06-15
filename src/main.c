@@ -95,8 +95,8 @@ int main(int argc, char *argv[]){
 	int rec_status = 0; //音频数据状态
 	const char *text_result; //识别结果指针
 	int rslt_result = 0; //识别结果状态
-	char *buff = (char *)malloc(audio_len); //音频缓冲区
-	int vad_flag = 1; //检测到说话为0
+	char buff[audio_len]; //音频缓冲区
+	int vad_flag; //检测到说话为0
 	_vad_reset();
 	//struct timeval tv_begin;
 	//struct timeval tv_end;
@@ -104,13 +104,15 @@ int main(int argc, char *argv[]){
 	//主循环，录音到缓存，上传分析，解析结果，上传结果，播放
     while(1){
 		//gettimeofday(&tv_begin, &tz);
-
 		//等待用户说话
-		printf("---->Waiting");
-		while (vad_flag == 1) {
+		printf("---->Waiting\n");
+		vad_flag = 1;
+		while(vad_flag == 1){
 			snd_pcm_readi(rec_handle, buff, frames);
 			vad_flag = vad_detect(buff, audio_len);
+			printf("%d\n", vad_flag);
 		}
+		_vad_reset();
 
 		//开始录音并上传语音直到不说话
 		printf("---->Recording\n");
@@ -144,7 +146,12 @@ int main(int argc, char *argv[]){
 		}
 
 		//得到结果
+		int request_count = 0; //cannot exceed 5
 		while (rslt_result != MSP_REC_STATUS_COMPLETE) {
+			if(request_count >= 10){
+				break;
+			}
+			request_count++;
 			printf("getting...\n");
 			text_result = QISRGetResult(vt_session_id, &rslt_result, 5000, &ret);
 			if (ret != 0) {
@@ -158,7 +165,11 @@ int main(int argc, char *argv[]){
 			usleep(200 * 1000);
 		}
 
-		parseAndplay(text_result, tv_session_id);
+		if(text_result == NULL){
+			continue;
+		}else{
+			//parseAndplay(text_result, tv_session_id);
+		}
 	
     }
 
