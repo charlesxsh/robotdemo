@@ -86,14 +86,17 @@ int main(int argc, char *argv[]){
         return -1;
     }
 	printf("已完成所有准备工作\n");
+
+
 	/*------------------------------主循环，录音，识别，得到结果合成---------------------------------------*/
-	int audio_status = 2; //音频数据状态，2表示还有后续数据
+	int audio_status; //音频数据状态，2表示还有后续数据
 	unsigned int audio_len = frames * 2; //音频长度
 	int ep_status = 0; //返回状态
 	int rec_status = 0; //音频数据状态
 	const char *text_result; //识别结果指针
 	int rslt_result = 0; //识别结果状态
-	char *buff = (char *)malloc(audio_len);
+	char *buff = (char *)malloc(audio_len); //音频缓冲区
+	int vad_flag = 1; //检测到说话为0
 	_vad_reset();
 	//struct timeval tv_begin;
 	//struct timeval tv_end;
@@ -101,16 +104,19 @@ int main(int argc, char *argv[]){
 	//主循环，录音到缓存，上传分析，解析结果，上传结果，播放
     while(1){
 		//gettimeofday(&tv_begin, &tz);
-		//上传语音直到不说话
-		while (audio_status != MSP_AUDIO_SAMPLE_LAST) {
+
+		//等待用户说话
+		printf("---->Waiting");
+		while (vad_flag == 1) {
+			snd_pcm_readi(rec_handle, buff, frames);
+			vad_flag = vad_detect(buff, audio_len);
+		}
+
+		//开始录音并上传语音直到不说话
+		printf("---->Recording\n");
+		audio_status = 2; //表示还有后续
+		while (audio_status != MSP_AUDIO_SAMPLE_LAST) {	
 			ret = snd_pcm_readi(rec_handle, buff, frames); //从录音设备文件读取音频数据放到buff里面
-			if(vad_detect(buff, audio_len) == 1){
-				printf("VAD detected!\n");
-				continue;
-			}else{
-				printf("VAD is false\n");
-			}
-			//printf("recording\n");
 			if (ret == -EPIPE) {
 				fprintf(stderr, "overrun occured.\n");
 				snd_pcm_prepare(rec_handle);
@@ -136,6 +142,7 @@ int main(int argc, char *argv[]){
 			//	break;
 			//}
 		}
+
 		//得到结果
 		while (rslt_result != MSP_REC_STATUS_COMPLETE) {
 			printf("getting...\n");
@@ -152,15 +159,7 @@ int main(int argc, char *argv[]){
 		}
 
 		parseAndplay(text_result, tv_session_id);
-        //----------------------------------------------录音到文件，上传分析，解析结果，上传结果，播放----------------------------------------------//
-        //record_to_file(REC_FILE_NAME, 4); //record to file named "20150604" for 5 seconds
-        //const char *textresult = voice_to_text(vt_session_id,REC_FILE_NAME); //could choose VT_PARAMS or NL_PARAMS
-        //printf("%s\n", textresult);  
-        //parseAndplay(textresult, tv_session_id);
-        //------------------------------------------------------------------------------------------------------------------------------------------// 
-        printf("Press Enter to continue...\n");
-        getchar();
-		audio_status = 2;
+	
     }
 
     //结束部分，释放资源
