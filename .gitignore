@@ -1,1 +1,3 @@
-testrv.c
+*.o
+*.h.gch
+*.c.swp
